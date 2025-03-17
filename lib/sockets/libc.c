@@ -28,6 +28,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sched.h>
 
 #include "internal.h"
 #include <utils.h>
@@ -150,7 +151,7 @@ static inline void ensure_init(void)
       init_done = 1;
     } else {
       while (init_done == 0) {
-        pthread_yield();
+        sched_yield();
       }
       MEM_BARRIER();
     }

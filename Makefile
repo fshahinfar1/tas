@@ -3,6 +3,8 @@
 ##############################################################################
 # Compile, link, and install flags
 
+PKGCONF = pkg-config
+
 CPPFLAGS += -Iinclude/
 CPPFLAGS += $(EXTRA_CPPFLAGS)
 CFLAGS += -std=gnu99 -O3 -g -Wall -Werror -march=native -fno-omit-frame-pointer
@@ -11,12 +13,18 @@ CFLAGS_SHARED += $(CFLAGS) -fPIC
 LDFLAGS += -pthread -g
 LDFLAGS += $(EXTRA_LDFLAGS)
 LDLIBS += -lm -lpthread -lrt -ldl
+LDLIBS += -lhugetlbfs
 LDLIBS += $(EXTRA_LDLIBS)
 
 PREFIX ?= /usr/local
 SBINDIR ?= $(PREFIX)/sbin
 LIBDIR ?= $(PREFIX)/lib
 INCDIR ?= $(PREFIX)/include
+
+
+# do not emit error for some warnings
+CFLAGS += -Wno-error=address-of-packed-member
+CFLAGS += -Wno-error=unused-function
 
 
 ##############################################################################
@@ -27,32 +35,36 @@ RTE_SDK ?= /usr/
 # mpdts to compile
 DPDK_PMDS ?= ixgbe i40e tap virtio
 
-DPDK_CPPFLAGS += -I$(RTE_SDK)/include -I$(RTE_SDK)/include/dpdk \
-  -I$(RTE_SDK)/include/x86_64-linux-gnu/dpdk/
-DPDK_LDFLAGS+= -L$(RTE_SDK)/lib/
-DPDK_LDLIBS+= \
-  -Wl,--whole-archive \
-   $(addprefix -lrte_pmd_,$(DPDK_PMDS)) \
-  -lrte_eal \
-  -lrte_mempool \
-  -lrte_mempool_ring \
-  -lrte_hash \
-  -lrte_ring \
-  -lrte_kvargs \
-  -lrte_ethdev \
-  -lrte_mbuf \
-  -lnuma \
-  -lrte_bus_pci \
-  -lrte_pci \
-  -lrte_cmdline \
-  -lrte_timer \
-  -lrte_net \
-  -lrte_kni \
-  -lrte_bus_vdev \
-  -lrte_gso \
-  -Wl,--no-whole-archive \
-  -ldl \
-  $(EXTRA_LIBS_DPDK)
+# DPDK_CPPFLAGS += -I$(RTE_SDK)/include -I$(RTE_SDK)/include/dpdk \
+#   -I$(RTE_SDK)/include/x86_64-linux-gnu/dpdk/
+# DPDK_LDFLAGS+= -L$(RTE_SDK)/lib/
+# DPDK_LDLIBS+= \
+#   -Wl,--whole-archive \
+#    $(addprefix -lrte_pmd_,$(DPDK_PMDS)) \
+#   -lrte_eal \
+#   -lrte_mempool \
+#   -lrte_mempool_ring \
+#   -lrte_hash \
+#   -lrte_ring \
+#   -lrte_kvargs \
+#   -lrte_ethdev \
+#   -lrte_mbuf \
+#   -lnuma \
+#   -lrte_bus_pci \
+#   -lrte_pci \
+#   -lrte_cmdline \
+#   -lrte_timer \
+#   -lrte_net \
+#   -lrte_kni \
+#   -lrte_bus_vdev \
+#   -lrte_gso \
+#   -Wl,--no-whole-archive \
+#   -ldl \
+#   $(EXTRA_LIBS_DPDK)
+
+DPDK_CPPFLAGS += $(shell $(PKGCONF) --cflags libdpdk)
+# DPDK_LDFLAGS += $(shell $(PKGCONF) --libs libdpdk)
+DPDK_LDLIBS += $(shell $(PKGCONF) --libs libdpdk)
 
 
 ##############################################################################

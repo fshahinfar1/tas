@@ -29,9 +29,15 @@
 #include <stdio.h>
 
 #include <rte_version.h>
+
+#if RTE_VER_YEAR < 20
+// KNI has been deprecated
 #include <rte_kni.h>
+#endif
+
 #include <rte_mbuf.h>
 #include <rte_mempool.h>
+#include <rte_ethdev.h>
 
 #include <tas.h>
 #include "internal.h"
@@ -53,6 +59,8 @@ static int op_config_mac_address(uint16_t port_id, uint8_t mac_addr[]);
 #endif
 
 static struct rte_mempool *kni_pool;
+
+#if RTE_VER_YEAR < 20
 static struct rte_kni *kni_if;
 static struct rte_kni_conf conf;
 static struct rte_kni_ops ops = {
@@ -62,12 +70,131 @@ static struct rte_kni_ops ops = {
     .config_mac_address = op_config_mac_address,
 #endif
   };
+#else // RTE_VER_YEAR >= 20
+// use this portid for sending/receiving on virtio-user port
+static int virt_port = -1;
+#endif
+
 static int change_linkstate = LST_NOOP;
+
+#define RX_RING_SIZE 2048
+
+#if RTE_VER_YEAR >= 20
+static int __initialize_port(int port)
+{
+  int rx_rings = 1;
+  int tx_rings = 1;
+  uint16_t nb_rxd = RX_RING_SIZE;
+  uint16_t nb_txd = 4096;
+  struct rte_eth_conf port_conf = {};
+
+  char pool_name[64];
+  sprintf(pool_name, "virtio_rx_%d", port);
+  struct rte_mempool *mbuf_pool = rte_mempool_create(pool_name,
+      POOL_SIZE, MBUF_SIZE, 32, sizeof(struct rte_pktmbuf_pool_private),
+      rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL, rte_socket_id(), 0);
+  if (mbuf_pool == NULL) {
+    fprintf(stderr, "init port rte_mempool_create failed\n");
+    return -1;
+  }
+
+  if (!(rte_eth_dev_is_valid_port(port))) {
+    printf("port is not valid\n");
+    return -1;
+  }
+
+  int retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
+  if (retval != 0) {
+    printf("failed to configure the port\n");
+    return -1;
+  }
+
+  retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
+  if (retval != 0) {
+    printf("failed to adjust the number of descriptors\n");
+    return -1;
+  }
+
+  // rx allocate queues
+  for (int q = 0; q < rx_rings; q++) {
+    retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
+        rte_eth_dev_socket_id(port), NULL, mbuf_pool);
+    if (retval != 0) {
+      printf("failed to setup the queue\n");
+      return -1;
+    }
+  }
+
+  // tx allocate queues
+  struct rte_eth_dev_info dev_info;
+  struct rte_eth_txconf *txconf;
+  rte_eth_dev_info_get(0, &dev_info);
+  txconf = &dev_info.default_txconf;
+
+  for (int q = 0; q < tx_rings; q++) {
+    retval = rte_eth_tx_queue_setup(port, q, nb_txd,
+        rte_eth_dev_socket_id(port), txconf);
+    if (retval != 0)
+      return -1;
+  }
+
+  // start ethernet port
+  retval = rte_eth_dev_start(port);
+  if (retval < 0) {
+    printf("fialed to start the port\n");
+    return retval;
+  }
+  return 0;
+}
+
+static int init_virtio_user(void)
+{
+  int portid;
+  int nb_ports = 1;
+  virt_port = rte_eth_dev_count_avail();
+
+  /* Create a vhost_user port for each physical port */
+  unsigned port_count = 0;
+  RTE_ETH_FOREACH_DEV(portid) {
+    char portname[32];
+    char portargs[256];
+    struct rte_ether_addr addr = {0};
+
+    /* once we have created a virtio port for each physical port, stop creating more */
+    if (++port_count > nb_ports)
+      break;
+
+    /* get MAC address of physical port to use as MAC of virtio_user port */
+    rte_eth_macaddr_get(portid, &addr);
+
+    /* set the name and arguments */
+    snprintf(portname, sizeof(portname), "virtio_user%u", portid);
+    snprintf(portargs, sizeof(portargs),
+        "path=/dev/vhost-net,queues=1,queue_size=%u,iface=%s,mac=" RTE_ETHER_ADDR_PRT_FMT,
+        RX_RING_SIZE, portname, RTE_ETHER_ADDR_BYTES(&addr));
+
+    /* add the vdev for virtio_user */
+    if (rte_eal_hotplug_add("vdev", portname, portargs) < 0)
+      rte_exit(EXIT_FAILURE, "Cannot create paired port for port %u\n", portid);
+
+  }
+  __initialize_port(virt_port);
+  return 0;
+}
+#endif
 
 int kni_init(void)
 {
   if (config.kni_name == NULL)
     return 0;
+
+#if RTE_VER_YEAR >= 20
+  // KNI has been deprecated and not avialable anymore
+  if (init_virtio_user() != 0) {
+    fprintf(stderr, "failed to prepare the virtio user\n");
+    return -1;
+  }
+#else
 
 #if RTE_VER_YEAR < 19
   rte_kni_init(1);
@@ -76,6 +203,8 @@ int kni_init(void)
     fprintf(stderr, "kni_init: rte_kni_init failed\n");
     return -1;
   }
+#endif
+
 #endif
 
   /* alloc mempool for kni */
@@ -87,6 +216,7 @@ int kni_init(void)
     return -1;
   }
 
+#if RTE_VER_YEAR < 20
   /* initialize config */
   memset(&conf, 0, sizeof(conf));
   strncpy(conf.name, config.kni_name, RTE_KNI_NAMESIZE - 1);
@@ -102,6 +232,7 @@ int kni_init(void)
     fprintf(stderr, "kni_init: rte_kni_alloc failed\n");
     return -1;
   }
+#endif
 
   return 0;
 }
@@ -125,10 +256,17 @@ void kni_packet(const void *pkt, uint16_t len)
   }
 
   memcpy(dst, pkt, len);
+#if RTE_VER_YEAR < 20
   if (rte_kni_tx_burst(kni_if, &mb, 1) != 1) {
     fprintf(stderr, "kni_packet: send failed\n");
     rte_pktmbuf_free(mb);
   }
+#else
+  if (rte_eth_tx_burst(virt_port, 0/*queue id*/, &mb, 1) != 1) {
+    fprintf(stderr, "kni_packet: send failed\n");
+    rte_pktmbuf_free(mb);
+  }
+#endif
 
 }
 
@@ -142,6 +280,7 @@ unsigned kni_poll(void)
   if (config.kni_name == NULL)
     return 0;
 
+#if RTE_VER_YEAR < 20
   if (change_linkstate != LST_NOOP) {
     if (interface_set_carrier(config.kni_name, change_linkstate == LST_UP)) {
       fprintf(stderr, "kni_poll: linkstate update failed\n");
@@ -163,6 +302,20 @@ unsigned kni_poll(void)
     rte_pktmbuf_free(mb);
   }
   return 1;
+#else
+  n = rte_eth_rx_burst(virt_port, 0, &mb, 1);
+  if (n == 1) {
+    if (nicif_tx_alloc(rte_pktmbuf_pkt_len(mb), &buf, &op) == 0) {
+      memcpy(buf, rte_pktmbuf_mtod(mb, void *), rte_pktmbuf_pkt_len(mb));
+      nicif_tx_send(op, 1);
+    } else {
+      fprintf(stderr, "kni_poll: virtio: send failed\n");
+    }
+
+    rte_pktmbuf_free(mb);
+  }
+  return 1;
+#endif
 }
 
 static int interface_set_carrier(const char *name, int status)

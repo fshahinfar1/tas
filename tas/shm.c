@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <hugetlbfs.h>
 
 #include <utils.h>
 #include <rte_config.h>
@@ -204,6 +205,14 @@ static void *util_create_shmsiszed_huge(const char *name, size_t size,
     perror("util_create_shmsiszed: open failed");
     goto error_out;
   }
+  /* printf("path: %s  | fd: %d | size: %ld\n", path, fd, size); */
+  size_t pagesz = gethugepagesize();
+  if (pagesz > size) {
+    // can not allocate less than one page
+    size = pagesz;
+  }
+
+
   if (ftruncate(fd, size) != 0) {
     perror("util_create_shmsiszed: ftruncate failed");
     goto error_remove;
@@ -225,6 +234,7 @@ static void *util_create_shmsiszed_huge(const char *name, size_t size,
 error_remove:
   close(fd);
   shm_unlink(name);
+  remove(path);
 error_out:
   return NULL;
 }
