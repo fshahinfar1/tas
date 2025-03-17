@@ -149,6 +149,7 @@ static int __initialize_port(int port)
 
 static int init_virtio_user(void)
 {
+  printf("initializing virtio_user\n");
   int portid;
   int nb_ports = 1;
   virt_port = rte_eth_dev_count_avail();

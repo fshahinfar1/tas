@@ -45,7 +45,8 @@ sudo ~/dpdk-inst/sbin/dpdk-devbind  -b vfio-pci 0000:08:00.0
 To run (`--ip-addr` and `--fp-cores-max` are the minimum arguments typically
 needed to run tas, for more see `--help`):
 ```
-sudo code/tas/tas --ip-addr=10.0.0.1/24 --fp-cores-max=2
+# sudo code/tas/tas --ip-addr=10.0.0.1/24 --fp-cores-max=2
+sudo ./tas/tas --ip-addr=192.168.1.1 --fp-cores-max=2 --dpdk-extra='-a' --dpdk-extra=$NET_PCI
 ```
 
 Once tas is running, applications that directly link to `libtas` or
