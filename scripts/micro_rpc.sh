@@ -3,20 +3,39 @@
 benchdir=$HOME/dev/tas-b/benchmarks/micro_rpc/
 
 # set LD_PRELOAD
-if [ -n $TAS_LIB ]; then
+if [ -n "$TAS_LIB" ]; then
 	ldload="LD_PRELOAD=$TAS_LIB"
 else
-	ldload="LD_PRELOAD=$HOME/dev/tas/libs/libtas_interpose.so"
+	echo "warning: TAS_LIB not set"
+	ldload="LD_PRELOAD=$HOME/dev/tas/lib/libtas_interpose.so"
 fi
 
 mode=server
 port=1234
+if [ -z "$msg_sz" ]; then
+	echo "msg_sz not specified: server and client should use the same msg_sz (default 8192)"
+	msg_sz=8192
+fi
+if [ -z "$max_pending" ]; then
+	echo "max_pending not specified"
+	max_pending=512
+fi
+
 if [ $# -ge 1 ]; then
 	mode=client
 	server_ip=$1
 fi
 
-msg_sz=8192
+launch_client() {
+	cores=1
+	total_conn=1
+	f="sudo $ldload "$benchdir/testclient_linux" \
+		$server_ip $port $cores foo \
+		$msg_sz $max_pending $total_conn"
+	echo "$f"
+	$f
+}
+
 case $mode in
 	"server")
 		echo Launching a server
@@ -28,12 +47,7 @@ case $mode in
 		;;
 	"client")
 		echo Launching client
-		cores=1
-		max_pending=512
-		total_conn=1
-		sudo $ldload "$benchdir/testclient_linux" \
-			$server_ip $port $cores foo \
-			$msg_sz $max_pending $total_conn
+		launch_client
 		;;
 	*)
 		echo unknown
