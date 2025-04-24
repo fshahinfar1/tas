@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Usage:
+# 
+# You may set following environment variables to configure experiments
+#   TAS_LIB: path to libtas_interpose.so
+#   msg_sz: size of message. It should be the same among client & server config
+#   max_pendig:
+#   total_conn:
+
 benchdir=$HOME/dev/tas-b/benchmarks/micro_rpc/
 
 # set LD_PRELOAD
@@ -20,6 +28,10 @@ if [ -z "$max_pending" ]; then
 	echo "max_pending not specified"
 	max_pending=512
 fi
+if [ -z "$total_conn" ]; then
+	echo "total_conn not specified"
+	total_conn=1
+fi
 
 if [ $# -ge 1 ]; then
 	mode=client
@@ -28,7 +40,6 @@ fi
 
 launch_client() {
 	cores=1
-	total_conn=1
 	f="sudo $ldload "$benchdir/testclient_linux" \
 		$server_ip $port $cores foo \
 		$msg_sz $max_pending $total_conn"

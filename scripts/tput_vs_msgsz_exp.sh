@@ -7,9 +7,7 @@ fi
 
 tas_dir=$HOME/dev/tas
 output_dir=$HOME/results/
-out_standing_msgs=8
-msg_sz=( 32 64 128 256 512 1024 2048 4096 8192 )
-server=128.105.146.99
+server=128.110.218.241
 server_exp_ip=192.168.1.1
 exp_duration=20
 
@@ -46,12 +44,13 @@ EOF
 run_exp() {
 	# bring up tas engine
 	sz=$1
+	wnd=$2
 	cd $tas_dir/scripts/
 	(NET_PCI=$NET_PCI nohup bash ./tas_up.sh &> /tmp/tas) &
 	sleep 5
 	# run the client
-	output_file="$output_dir"/"msg_sz_$sz.txt"
-	(msg_sz=$sz max_pending=$out_standing_msgs \
+	output_file="$output_dir"/"msg_sz_${sz}_wnd_sz_${wnd}.txt"
+	(msg_sz=$sz max_pending=1 total_conn=$wnd \
 	./micro_rpc.sh "$server_exp_ip" |  tee "$output_file") &
 	sleep $exp_duration
 }
@@ -67,29 +66,52 @@ stop_exp() {
 
 trap "stop_exp" SIGINT SIGHUP
 
+one_round() {
+	sz=$1
+	wnd=$2
+	clean_up_everthing &> /dev/null
+	setup_server $sz &> /dev/null
+	run_exp $sz $wnd
+	sleep 1
+	clean_up_everthing
+	sleep 1
+}
+
 main() {
 	if [ ! -d $output_dir ]; then
 		mkdir -p $output_dir
 	fi
 
-	for sz in "${msg_sz[@]}"; do
+	echo "Running fixed window size experiments:"
+	echo "======================================================="
+	list=( 32 64 128 256 512 1024 2048 4096 8192 )
+	wnd=512 # fixed window
+	for sz in "${list[@]}"; do
 		if [ $running -eq 0 ]; then
 			break
 		fi
-		echo "======================================================="
-		echo Running measurment with message size = $sz
-		clean_up_everthing &> /dev/null
-		setup_server $sz &> /dev/null
-		run_exp $sz
-		sleep 1
-		clean_up_everthing
-		sleep 1
+		echo "message size: $sz     window size: $wnd"
+		one_round $sz $wnd
+		echo "......................................................."
+	done
+
+	echo "Running fixed message size experiments:"
+	echo "======================================================="
+	list=( 1 2 4 8 16 32 64 128 256 512 )
+	sz=8192 # fixed message size
+	for wnd in "${list[@]}"; do
+		if [ $running -eq 0 ]; then
+			break
+		fi
+		echo "message size: $sz     window size: $wnd"
+		one_round $sz $wnd
+		echo "......................................................."
 	done
 }
 
 # test
 # clean_up_everthing
-# setup_server 32
+# setup_server 8192
 
 main
 
