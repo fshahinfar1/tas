@@ -6,14 +6,16 @@ if [ -z "$NET_PCI" ]; then
 fi
 
 tas_dir=$HOME/dev/tas
-output_dir=$HOME/results/
-server=128.110.218.241
-server_exp_ip=192.168.1.1
+output_dir=$HOME/tas_results/
+server=10.0.0.6
+server_exp_ip=10.0.0.7
+local_ip=10.0.0.5
 exp_duration=20
+ssh_user=hawk
 
 clean_up_everthing() {
 	echo 'cleaning every thing'
-	ssh farbod@$server <<EOF
+	ssh $ssh_user@$server <<EOF
 	sudo pkill echoserver_linu
 	sleep 1
 	sudo pkill tas
@@ -29,13 +31,12 @@ EOF
 setup_server() {
 	sz=$1
 	echo 'about to setup server'
-	ssh farbod@$server << EOF
-	source \$HOME/.bashrc
+	ssh $ssh_user@$server << EOF
 	cd $tas_dir/scripts
-	(NET_PCI=$NET_PCI nohup bash ./tas_up.sh &> /tmp/tas) &
+	(NET_PCI="\$NET_PCI" IP="$server_exp_ip" nohup bash ./tas_up.sh &> /tmp/tas) &
 	sleep 5
-	(TAS_LIB=$TAS_LIB \
-		msg_sz=$sz \
+	(TAS_LIB="\$TAS_LIB" \
+		msg_sz=$sz max_pending=1 total_conn=512 \
 		nohup bash ./micro_rpc.sh &> /tmp/server) &
 	sleep 1
 EOF
@@ -46,12 +47,12 @@ run_exp() {
 	sz=$1
 	wnd=$2
 	cd $tas_dir/scripts/
-	(NET_PCI=$NET_PCI nohup bash ./tas_up.sh &> /tmp/tas) &
+	(NET_PCI=$NET_PCI IP=$local_ip nohup bash ./tas_up.sh &> /tmp/tas < /dev/null) &
 	sleep 5
 	# run the client
 	output_file="$output_dir"/"msg_sz_${sz}_wnd_sz_${wnd}.txt"
 	(msg_sz=$sz max_pending=1 total_conn=$wnd \
-	./micro_rpc.sh "$server_exp_ip" |  tee "$output_file") &
+		./micro_rpc.sh "$server_exp_ip" < /dev/null | tee "$output_file") &
 	sleep $exp_duration
 }
 
@@ -70,6 +71,7 @@ one_round() {
 	sz=$1
 	wnd=$2
 	clean_up_everthing &> /dev/null
+	sleep 1
 	setup_server $sz &> /dev/null
 	run_exp $sz $wnd
 	sleep 1
@@ -110,7 +112,7 @@ main() {
 }
 
 # test
-# clean_up_everthing
+# clean_up_everthing &> /dev/null
 # setup_server 8192
 
 main
