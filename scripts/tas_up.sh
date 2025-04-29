@@ -28,6 +28,7 @@ case $MODE in
 		echo running insde a vm
 		sudo $TAS_BIN --ip-addr=$IP --fp-cores-max=2 \
 			--fp-no-ints --fp-no-autoscale \
+			--cc=dctcp-win \
 			--dpdk-extra='-l' --dpdk-extra="2,3,4,5" \
 			--dpdk-extra='-a' --dpdk-extra=$NET_PCI
 		;;

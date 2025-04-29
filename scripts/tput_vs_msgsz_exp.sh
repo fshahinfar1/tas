@@ -10,7 +10,7 @@ output_dir=$HOME/tas_results/
 server=10.0.0.6
 server_exp_ip=10.0.0.7
 local_ip=10.0.0.5
-exp_duration=20
+exp_duration=25
 ssh_user=hawk
 
 clean_up_everthing() {
