@@ -18,6 +18,10 @@ else
 	ldload="LD_PRELOAD=$HOME/dev/tas/lib/libtas_interpose.so"
 fi
 
+if [ "$NO_TAS" = "yes" ]; then
+	ldload=""
+fi
+
 mode=server
 port=1234
 if [ -z "$msg_sz" ]; then
